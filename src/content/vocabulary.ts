@@ -22,5 +22,37 @@ export const VOCABULARY = {
 export type VocabularyLemma = keyof typeof VOCABULARY;
 
 export function getVocabulary(lemma: string): VocabularyEntry | undefined {
-  return VOCABULARY[lemma as VocabularyLemma];
+  // Check static database first
+  const staticEntry = VOCABULARY[lemma as VocabularyLemma];
+  if (staticEntry) return staticEntry;
+
+  // Fallback to dynamic vocabulary saved in localStorage
+  try {
+    const raw = localStorage.getItem('sori:dynamic-vocabulary');
+    if (raw) {
+      const dynamicMap = JSON.parse(raw);
+      if (dynamicMap[lemma]) {
+        return dynamicMap[lemma] as VocabularyEntry;
+      }
+    }
+  } catch (error) {
+    console.error("Error reading dynamic vocabulary from localStorage:", error);
+  }
+
+  return undefined;
+}
+
+export function saveDynamicVocabulary(newVocab: VocabularyEntry[]): void {
+  try {
+    const raw = localStorage.getItem('sori:dynamic-vocabulary');
+    const dynamicMap = raw ? JSON.parse(raw) : {};
+    
+    for (const entry of newVocab) {
+      dynamicMap[entry.lemma] = entry;
+    }
+    
+    localStorage.setItem('sori:dynamic-vocabulary', JSON.stringify(dynamicMap));
+  } catch (error) {
+    console.error("Error saving dynamic vocabulary to localStorage:", error);
+  }
 }

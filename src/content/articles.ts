@@ -2,7 +2,7 @@ import type { Article, ArticleParagraph, ArticleSegment, Level } from '../domain
 import { getVocabulary } from './vocabulary';
 import { isOpenClass } from '../domain/content';
 
-const images = { bakery:'/assets/bakery.png', river:'/assets/river.png', bookstore:'/assets/bookstore.png' };
+const images = { bakery:`${import.meta.env.BASE_URL}assets/bakery.png`, river:`${import.meta.env.BASE_URL}assets/river.png`, bookstore:`${import.meta.env.BASE_URL}assets/bookstore.png` };
 const t = (value: string): ArticleSegment => ({ type:'text', value });
 const v = (value: string, lemma = value): ArticleSegment => ({ type:'vocab', value, lemma });
 const p = (english: string, ...segments: ArticleSegment[]): ArticleParagraph => ({ segments, english });
