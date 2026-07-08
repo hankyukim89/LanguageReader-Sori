@@ -8,10 +8,11 @@ interface SignInScreenProps {
 
 export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('demo@sori.app');
-  const [password, setPassword] = useState('koreanreader');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -26,6 +27,7 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
 
     setLoading(true);
     setError(null);
+    setNotice(null);
 
     try {
       if (isSignUp) {
@@ -54,18 +56,29 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
     setLoading(true);
     setError(null);
     try {
-      // For Google Sign In, mock it or use firebase sign in
-      // For now, since Google Sign In setup requires console config, we'll auto-sign-in with a mock/real Google account
-      await authService.signIn('google-user@sori.app', 'google-auth-pass-bypass');
+      await authService.signInWithGoogle();
       onAuthSuccess();
     } catch (err: any) {
-      // Fallback: create account if it doesn't exist
-      try {
-        await authService.signUp('google-user@sori.app', 'google-auth-pass-bypass');
-        onAuthSuccess();
-      } catch (signUpErr: any) {
-        setError('Google sign in failed. Please use email credentials.');
-      }
+      setError('Google sign in failed. Please use email credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Enter your email address first.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await authService.sendPasswordReset(email);
+      setNotice(authService.isReal
+        ? 'Password reset email sent.'
+        : 'Password reset is available when Firebase authentication is connected.');
+    } catch {
+      setError('Could not send the reset email. Check the address and try again.');
     } finally {
       setLoading(false);
     }
@@ -97,6 +110,7 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
             <span>{error}</span>
           </div>
         )}
+        {notice && <div className="auth-notice" role="status">{notice}</div>}
 
         <label htmlFor="email">Email address</label>
         <div className="input-wrap">
@@ -106,6 +120,7 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
             value={email} 
             onChange={e => setEmail(e.target.value)} 
             type="email" 
+            autoComplete="email"
             placeholder="yourname@domain.com"
             disabled={loading}
           />
@@ -119,6 +134,7 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
             value={password} 
             onChange={e => setPassword(e.target.value)} 
             type="password" 
+            autoComplete={isSignUp ? 'new-password' : 'current-password'}
             placeholder="••••••••"
             disabled={loading}
           />
@@ -129,7 +145,7 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
             <label className="check">
               <input type="checkbox" defaultChecked disabled={loading}/> Remember me
             </label>
-            <button type="button" className="text-button" disabled={loading}>Forgot password?</button>
+            <button type="button" className="text-button" onClick={handleForgotPassword} disabled={loading}>Forgot password?</button>
           </div>
         )}
 
@@ -158,9 +174,7 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
         </p>
 
         <p className="fine">
-          {authService.isReal 
-            ? 'Production Mode — Authenticating via Google Firebase.' 
-            : 'Preview Mode — Email validation and local profile sandbox active.'}
+          Secure sign-in keeps your reading progress synced across sessions.
         </p>
       </form>
     </section>

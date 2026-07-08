@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Clock3, Headphones, Languages, Pause, Play, Sparkles, Volume2, Lock } from 'lucide-react';
 import { LEVELS, type Article } from '../../domain/content';
-import { speakKorean, stopSpeaking } from '../../lib/speech';
+import { pauseSpeaking, resumeSpeaking, speakKorean, stopSpeaking } from '../../lib/speech';
 import { WordPanel } from '../vocabulary/WordPanel';
 
 interface Props { 
@@ -30,31 +30,42 @@ export function ReaderView({
   onUpgradeRequired
 }: Props) {
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(18);
+  const [progress, setProgress] = useState(0);
   const [showTranslation, setShowTranslation] = useState(false);
   const [completed, setCompleted] = useState(false);
   const plainText = useMemo(() => article.paragraphs.flatMap(paragraph => paragraph.segments).map(segment => segment.value).join(' '), [article]);
+  const durationSeconds = Math.max(60, article.minutes * 60);
 
   useEffect(() => () => stopSpeaking(), []);
   
   useEffect(() => {
     if (!playing) return;
     const timer = window.setInterval(() => {
-      setProgress(current => current >= 98 ? 18 : current + 1);
+      setProgress(current => Math.min(100, current + (100 / durationSeconds)));
       if (onListenTimeIncrement) {
         onListenTimeIncrement(1); // Accumulate 1 second played
       }
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [playing, onListenTimeIncrement]);
+  }, [durationSeconds, playing, onListenTimeIncrement]);
 
   const togglePlayback = () => {
     if (playing) {
-      stopSpeaking();
-    } else {
-      speakKorean(plainText);
+      pauseSpeaking();
+      setPlaying(false);
+      return;
     }
-    setPlaying(current => !current);
+    if (window.speechSynthesis?.paused) {
+      resumeSpeaking();
+      setPlaying(true);
+    } else {
+      setProgress(0);
+      const started = speakKorean(plainText, () => {
+        setPlaying(false);
+        setProgress(100);
+      });
+      setPlaying(started);
+    }
   };
 
   const handleSelectLemma = (lemma: string) => {
@@ -80,14 +91,14 @@ export function ReaderView({
       {isPremium ? (
         <span className="voice-status-badge premium"><Sparkles size={11} fill="currentColor" /> Studio quality audio active</span>
       ) : (
-        <div className="voice-status-badge free" onClick={onUpgradeRequired} style={{ cursor: 'pointer' }}>
+        <button className="voice-status-badge free" onClick={onUpgradeRequired}>
           <span>Browser Text-to-Speech active.</span>
           <strong>Upgrade for ultra-realistic Studio Voice <Lock size={10} fill="currentColor" /></strong>
-        </div>
+        </button>
       )}
     </div>
     
-    <AudioPlayer playing={playing} progress={progress} toggle={togglePlayback}/>
+    <AudioPlayer playing={playing} progress={progress} durationSeconds={durationSeconds} toggle={togglePlayback}/>
     <button className={`translation-toggle ${showTranslation ? 'active' : ''}`} onClick={() => setShowTranslation(current => !current)} aria-pressed={showTranslation}><Languages/>{showTranslation ? 'Hide English' : 'Show English translation'}</button>
     <div className="article-body">{article.paragraphs.map((paragraph,index) => <div className="article-paragraph" key={index}><p>{paragraph.segments.map((segment,segmentIndex) => segment.type === 'text' ? segment.value : <button key={segmentIndex} className="vocab-word" style={{'--word-color':LEVELS[article.level]} as React.CSSProperties} onClick={() => handleSelectLemma(segment.lemma)}>{segment.value}</button>)}</p>{showTranslation ? <p className="english-translation" lang="en">{paragraph.english}</p> : null}</div>)}</div>
     
@@ -111,6 +122,14 @@ export function ReaderView({
   </main><WordPanel lemma={selectedLemma} onClose={() => selectLemma(null)} isSaved={isSaved} toggleSaved={toggleSaved}/></div>;
 }
 
-function AudioPlayer({ playing, progress, toggle }: { playing: boolean; progress: number; toggle: () => void }) {
-  return <div className="audio-player"><button className="play" onClick={toggle}>{playing ? <Pause fill="currentColor"/> : <Play fill="currentColor"/>}</button><button className="rewind">10<span>↶</span></button><span className="time">00:{String(Math.floor(progress*.48)).padStart(2,'0')}</span><div className="track"><i style={{width:`${progress}%`}}><b/></i></div><span className="duration">04:32</span><button className="speed">1.0x</button><Volume2/></div>;
+function AudioPlayer({ playing, progress, durationSeconds, toggle }: { playing: boolean; progress: number; durationSeconds: number; toggle: () => void }) {
+  const elapsed = Math.floor(durationSeconds * progress / 100);
+  const formatTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  return <div className="audio-player">
+    <button className="play" onClick={toggle} aria-label={playing ? 'Pause Korean audio' : 'Play Korean audio'}>{playing ? <Pause fill="currentColor"/> : <Play fill="currentColor"/>}</button>
+    <span className="time">{formatTime(elapsed)}</span>
+    <div className="track" role="progressbar" aria-label="Audio progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><i style={{width:`${progress}%`}}><b/></i></div>
+    <span className="duration">{formatTime(durationSeconds)}</span>
+    <Volume2 aria-hidden="true"/>
+  </div>;
 }

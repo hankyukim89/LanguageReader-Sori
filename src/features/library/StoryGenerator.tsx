@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Sparkles, Loader2, ArrowRight } from 'lucide-react';
 import { generateStory } from '../../lib/gemini';
 import { LEVELS, type Level, type Article } from '../../domain/content';
+import { useDialog } from '../../hooks/useDialog';
 
 interface StoryGeneratorProps {
   onClose: () => void;
@@ -13,6 +14,7 @@ export function StoryGenerator({ onClose, onStoryGenerated }: StoryGeneratorProp
   const [level, setLevel] = useState<Level>('A2');
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useDialog<HTMLDivElement>(onClose, !generating);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,12 +51,12 @@ export function StoryGenerator({ onClose, onStoryGenerated }: StoryGeneratorProp
     }
   };
 
-  return <div className="modal-backdrop">
-    <div className="modal-content story-generator-modal">
+  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !generating) onClose(); }}>
+    <div className="modal-content story-generator-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="generator-title">
       <header className="modal-header">
         <div className="modal-title">
           <Sparkles className="icon-coral animate-pulse" size={22} />
-          <h2>AI Story Generator</h2>
+          <h2 id="generator-title">AI Story Generator</h2>
         </div>
         <button className="close-button" onClick={onClose} disabled={generating} aria-label="Close generator">
           <X size={20} />
@@ -77,7 +79,7 @@ export function StoryGenerator({ onClose, onStoryGenerated }: StoryGeneratorProp
           </p>
 
           {error && (
-            <div className="form-error">
+            <div className="form-error" role="alert">
               <span>{error}</span>
             </div>
           )}
@@ -97,7 +99,7 @@ export function StoryGenerator({ onClose, onStoryGenerated }: StoryGeneratorProp
 
           <div className="form-group">
             <label>Select CEFR Difficulty Level</label>
-            <div className="level-grid-selector">
+            <div className="level-grid-selector" role="group" aria-label="CEFR difficulty level">
               {Object.entries(LEVELS).map(([lvl, color]) => (
                 <button 
                   key={lvl}
@@ -105,6 +107,7 @@ export function StoryGenerator({ onClose, onStoryGenerated }: StoryGeneratorProp
                   className={`level-btn ${level === lvl ? 'active' : ''}`}
                   style={{ '--level-color': color } as React.CSSProperties}
                   onClick={() => setLevel(lvl as Level)}
+                  aria-pressed={level === lvl}
                 >
                   <strong>{lvl}</strong>
                   <span>

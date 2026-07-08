@@ -51,8 +51,8 @@ if ('speechSynthesis' in window) {
   window.speechSynthesis.getVoices();
 }
 
-export function speakKorean(text: string): void {
-  if (!('speechSynthesis' in window)) return;
+export function speakKorean(text: string, onEnd?: () => void): boolean {
+  if (!('speechSynthesis' in window)) return false;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'ko-KR';
@@ -60,10 +60,20 @@ export function speakKorean(text: string): void {
 
   const voice = getKoreanVoice();
   if (voice) utterance.voice = voice;
+  if (onEnd) utterance.onend = onEnd;
 
   window.speechSynthesis.speak(utterance);
+  return true;
 }
 
 export function stopSpeaking(): void {
   window.speechSynthesis?.cancel();
+}
+
+export function pauseSpeaking(): void {
+  window.speechSynthesis?.pause();
+}
+
+export function resumeSpeaking(): void {
+  window.speechSynthesis?.resume();
 }

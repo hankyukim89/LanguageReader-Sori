@@ -5,6 +5,7 @@ import { SignInScreen } from '../features/auth/SignInScreen';
 import { HomeView, LibraryView, type LevelFilter } from '../features/library/LibraryViews';
 import { ReaderView } from '../features/reader/ReaderView';
 import { ReviewView, SavedWordsView } from '../features/vocabulary/VocabularyViews';
+import { WordPanel } from '../features/vocabulary/WordPanel';
 import { ProfileView } from '../features/profile/ProfileView';
 import { StoryGenerator } from '../features/library/StoryGenerator';
 import { CheckoutModal } from '../features/library/CheckoutModal';
@@ -31,6 +32,8 @@ export function App() {
   const [selectedLemma, setSelectedLemma] = useState<string | null>(null);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [savedStories, setSavedStories] = useState<string[]>([]);
+  const [searchRequest, setSearchRequest] = useState(0);
 
   // Monitor auth state changes
   useEffect(() => {
@@ -80,6 +83,9 @@ export function App() {
             }
           });
         }
+
+        const storedStories = localStorage.getItem(`sori:saved-stories:${currentUser.uid}`);
+        setSavedStories(storedStories ? JSON.parse(storedStories) : []);
       } catch (err) {
         console.error("Error loading user profile stats:", err);
       }
@@ -97,6 +103,25 @@ export function App() {
   const isSaved = useCallback((lemma: string) => savedSet.has(lemma), [savedSet]);
   
   const isPremium = !!stats?.isPremium;
+
+  useEffect(() => {
+    if (screen !== 'saved' || !selectedLemma) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('.saved-definition-drawer button')?.focus();
+    });
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedLemma(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [screen, selectedLemma]);
 
   const toggleSaved = useCallback((lemma: string) => {
     if (!user || !stats) return;
@@ -211,6 +236,32 @@ export function App() {
     setStats(prev => prev ? { ...prev, isPremium: true } : null);
   };
 
+  const toggleSavedStory = useCallback((articleId: string) => {
+    if (!user) return;
+    setSavedStories(current => {
+      const next = current.includes(articleId)
+        ? current.filter(id => id !== articleId)
+        : [...current, articleId];
+      localStorage.setItem(`sori:saved-stories:${user.uid}`, JSON.stringify(next));
+      return next;
+    });
+  }, [user]);
+
+  const handleCompleteArticle = useCallback(async (articleId: string) => {
+    if (!user || !stats) return;
+    const completedArticles = stats.completedArticles || [];
+    if (completedArticles.includes(articleId)) return;
+    const next = [...completedArticles, articleId];
+    setStats(current => current ? { ...current, completedArticles: next } : current);
+    await dbService.updateUserStats(user.uid, { completedArticles: next });
+  }, [stats, user]);
+
+  const openMobileSearch = () => {
+    setArticle(null);
+    setScreen('library');
+    setSearchRequest(current => current + 1);
+  };
+
   if (authLoading) {
     return (
       <div className="app-loading-shell">
@@ -237,10 +288,13 @@ export function App() {
     />
     
     <header className="mobile-header">
-      <button aria-label="Back" onClick={() => article ? setArticle(null) : undefined}>
+      <button
+        aria-label={article ? 'Back to stories' : 'Search stories'}
+        onClick={() => article ? setArticle(null) : openMobileSearch()}
+      >
         {article ? <ArrowLeft/> : <Search/>}
       </button>
-      <div className="brand" onClick={() => navigate('home')} style={{ cursor: 'pointer' }}>Sori</div>
+      <button className="brand brand-button" onClick={() => navigate('home')}>Sori</button>
       <button aria-label="Saved" onClick={() => navigate('saved')}><Bookmark/></button>
     </header>
     
@@ -254,6 +308,7 @@ export function App() {
           toggleSaved={toggleSaved}
           onWordLookup={handleWordLookup}
           onListenTimeIncrement={handleListenTimeIncrement}
+          onCompleteArticle={handleCompleteArticle}
           isPremium={isPremium}
           onUpgradeRequired={() => setShowPremiumModal(true)}
         />
@@ -267,6 +322,9 @@ export function App() {
             onUpgradeRequired={() => setShowPremiumModal(true)}
             userDisplayName={userDisplayName}
             articles={allArticles}
+            onViewAll={() => navigate('library')}
+            savedStoryIds={new Set(savedStories)}
+            toggleSavedStory={toggleSavedStory}
           />
           <div className="ai-story-banner-container">
             <div className="ai-story-banner" onClick={handleOpenGenerator}>
@@ -294,14 +352,28 @@ export function App() {
             isPremium={isPremium}
             onUpgradeRequired={() => setShowPremiumModal(true)}
             articles={allArticles}
+            searchRequest={searchRequest}
+            savedStoryIds={new Set(savedStories)}
+            toggleSavedStory={toggleSavedStory}
           />
         </div>
       ) : screen === 'saved' ? (
-        <SavedWordsView saved={saved} toggleSaved={toggleSaved} selectLemma={setSelectedLemma}/>
+        <>
+          <SavedWordsView saved={saved} selectLemma={setSelectedLemma}/>
+          {selectedLemma && (
+            <>
+              <button className="definition-backdrop" aria-label="Close definition" onClick={() => setSelectedLemma(null)} />
+              <div className="saved-definition-drawer" role="dialog" aria-modal="true" aria-label="Saved word definition">
+                <WordPanel lemma={selectedLemma} onClose={() => setSelectedLemma(null)} isSaved={isSaved} toggleSaved={toggleSaved}/>
+              </div>
+            </>
+          )}
+        </>
       ) : screen === 'review' ? (
         <ReviewView saved={saved}/>
       ) : (
         <ProfileView 
+          key={`profile-${isPremium ? 'pro' : 'free'}`}
           uid={user.uid} 
           savedCount={saved.length} 
           onSignOut={() => setUser(null)} 

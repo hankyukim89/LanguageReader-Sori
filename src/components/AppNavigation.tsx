@@ -20,7 +20,7 @@ interface Props {
 
 export function Sidebar({ screen, navigate, userDisplayName = 'Mina', userStreak = 12 }: Props) {
   return <aside className="sidebar">
-    <div className="brand" onClick={() => navigate('home')} style={{ cursor: 'pointer' }}>Sori<span>소리</span></div>
+    <button className="brand brand-button sidebar-brand" onClick={() => navigate('home')}>Sori<span>소리</span></button>
     <nav>
       {links.map(([id, Icon, label]) => (
         <button 
@@ -45,19 +45,17 @@ export function Sidebar({ screen, navigate, userDisplayName = 'Mina', userStreak
         </div>
       ))}
     </div>
-    <div 
+    <button
       className={`profile-trigger profile ${screen === 'profile' ? 'active-profile' : ''}`} 
       onClick={() => navigate('profile')} 
-      style={{ cursor: 'pointer' }}
-      role="button"
-      tabIndex={0}
+      aria-label={`Open profile for ${userDisplayName}`}
     >
       <div className="avatar">{userDisplayName.charAt(0).toUpperCase()}</div>
       <div>
         <strong>{userDisplayName}</strong>
         <small>{userStreak} day streak</small>
       </div>
-    </div>
+    </button>
   </aside>;
 }
 

@@ -3,6 +3,9 @@ import {
   getAuth, 
   signInWithEmailAndPassword as fbSignIn, 
   createUserWithEmailAndPassword as fbSignUp, 
+  GoogleAuthProvider,
+  sendPasswordResetEmail,
+  signInWithPopup,
   signOut as fbSignOut, 
   onAuthStateChanged as fbOnAuthChange, 
   type User as FirebaseUser 
@@ -12,8 +15,15 @@ import {
   doc, 
   getDoc, 
   setDoc, 
-  updateDoc 
+  updateDoc,
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  where,
+  getDocs
 } from 'firebase/firestore';
+
 
 export interface UserStats {
   uid: string;
@@ -27,6 +37,7 @@ export interface UserStats {
   hoursListened: number;     // Listened time in seconds
   isPremium: boolean;
   aiStoryCount: number;      // Tracks count of generated stories
+  completedArticles?: string[];
 }
 
 export interface AuthUser {
@@ -72,7 +83,8 @@ const createDefaultStats = (uid: string, email: string): UserStats => ({
   wordsTranslated: ['골목', '여유', '빗소리'],
   hoursListened: 1080, // 18 minutes in seconds
   isPremium: false,
-  aiStoryCount: 0
+  aiStoryCount: 0,
+  completedArticles: []
 });
 
 // Mock Local Storage State
@@ -197,6 +209,38 @@ export const authService = {
     }
   },
 
+  async signInWithGoogle(): Promise<AuthUser> {
+    if (isRealFirebase && auth) {
+      const credential = await signInWithPopup(auth, new GoogleAuthProvider());
+      const fbUser = credential.user;
+      if (db) {
+        const statsRef = doc(db, 'users', fbUser.uid);
+        const snap = await getDoc(statsRef);
+        if (!snap.exists()) await setDoc(statsRef, createDefaultStats(fbUser.uid, fbUser.email || 'user@sori.app'));
+      }
+      return { uid: fbUser.uid, email: fbUser.email, displayName: fbUser.displayName };
+    }
+
+    const email = 'preview-google-user@sori.app';
+    const users = getMockUsers();
+    if (!users[email]) {
+      const uid = 'mock_google';
+      users[email] = { uid, password: 'local-preview-only' };
+      setMockUsers(users);
+      setMockStats(uid, createDefaultStats(uid, email));
+    }
+    const current = users[email];
+    currentMockUser = { uid: current.uid, email, displayName: 'Preview learner' };
+    mockAuthCallbacks.forEach(cb => cb(currentMockUser));
+    return currentMockUser;
+  },
+
+  async sendPasswordReset(email: string): Promise<void> {
+    if (isRealFirebase && auth) {
+      await sendPasswordResetEmail(auth, email);
+    }
+  },
+
   async signOut(): Promise<void> {
     if (isRealFirebase && auth) {
       await fbSignOut(auth);
@@ -208,16 +252,66 @@ export const authService = {
 };
 
 export const dbService = {
+  async checkActiveSubscription(uid: string): Promise<boolean> {
+    if (isRealFirebase && db) {
+      try {
+        const subsRef = collection(db, 'users', uid, 'subscriptions');
+        const q = query(subsRef, where('status', 'in', ['active', 'trialing']));
+        const snap = await getDocs(q);
+        return !snap.empty;
+      } catch (err) {
+        console.error("Error checking user subscription from Stripe:", err);
+        return false;
+      }
+    }
+    return false;
+  },
+
+  async createCheckoutSession(uid: string, priceId: string): Promise<string> {
+    if (isRealFirebase && db) {
+      const sessionsRef = collection(db, 'users', uid, 'checkout_sessions');
+      const docRef = await addDoc(sessionsRef, {
+        price: priceId,
+        success_url: window.location.origin,
+        cancel_url: window.location.origin,
+      });
+
+      return new Promise((resolve, reject) => {
+        const unsubscribe = onSnapshot(docRef, (snap) => {
+          const data = snap.data();
+          if (data?.error) {
+            unsubscribe();
+            reject(new Error(data.error.message));
+          }
+          if (data?.url) {
+            unsubscribe();
+            resolve(data.url);
+          }
+        }, (err) => {
+          unsubscribe();
+          reject(err);
+        });
+      });
+    }
+    throw new Error("Stripe checkout is not available in offline preview mode");
+  },
+
   async getUserStats(uid: string): Promise<UserStats> {
     if (isRealFirebase && db) {
       const statsRef = doc(db, 'users', uid);
       const snap = await getDoc(statsRef);
+      
+      // Query subscription status directly from the Stripe subcollection
+      const isPremiumStripe = await dbService.checkActiveSubscription(uid);
+
       if (snap.exists()) {
         const data = snap.data() as UserStats;
-        if (data.isPremium === undefined || data.aiStoryCount === undefined) {
+        const isPremium = isPremiumStripe || data.isPremium || false;
+
+        if (data.isPremium === undefined || data.aiStoryCount === undefined || data.isPremium !== isPremium) {
           const migrated = {
             ...data,
-            isPremium: data.isPremium !== undefined ? data.isPremium : false,
+            isPremium,
             aiStoryCount: data.aiStoryCount !== undefined ? data.aiStoryCount : 0
           };
           await setDoc(statsRef, migrated, { merge: true });
@@ -227,6 +321,7 @@ export const dbService = {
       } else {
         // Create if it doesn't exist
         const defaultStats = createDefaultStats(uid, 'user@sori.app');
+        defaultStats.isPremium = isPremiumStripe;
         await setDoc(statsRef, defaultStats);
         return defaultStats;
       }
