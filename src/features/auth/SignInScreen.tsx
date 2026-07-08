@@ -59,11 +59,13 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
       await authService.signInWithGoogle();
       onAuthSuccess();
     } catch (err: any) {
+      console.error("Google Sign-In Error:", err);
       setError('Google sign in failed. Please use email credentials.');
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleForgotPassword = async () => {
     if (!email) {
