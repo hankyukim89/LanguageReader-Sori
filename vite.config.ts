@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
 
-export default defineConfig({
-  base: '/LanguageReader-Sori/',
-})
+export default defineConfig(({ command }) => ({
+  base: command === 'serve' ? '/' : '/LanguageReader-Sori/',
+}))

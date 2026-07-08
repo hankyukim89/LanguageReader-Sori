@@ -176,6 +176,29 @@ export const authService = {
         displayName: cred.user.displayName || cred.user.email?.split('@')[0] || 'User'
       };
     } else {
+      // Auto-create/initialize mock admin if using username 'a' and password 'a'
+      if (email === 'a' && password === 'a') {
+        const users = getMockUsers();
+        if (!users['a']) {
+          users['a'] = { uid: 'mock_admin', password: 'a' };
+          setMockUsers(users);
+          setMockStats('mock_admin', {
+            uid: 'mock_admin',
+            email: 'admin@sori.app',
+            displayName: 'Admin Learner',
+            createdAt: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+            primaryLanguage: 'English',
+            streak: 99,
+            lastActiveDate: new Date().toISOString().split('T')[0],
+            wordsTranslated: ['골목', '여유', '빗소리'],
+            hoursListened: 3600,
+            isPremium: true,
+            aiStoryCount: 5,
+            completedArticles: []
+          });
+        }
+      }
+
       const users = getMockUsers();
       const stored = users[email];
       if (!stored || stored.password !== password) {

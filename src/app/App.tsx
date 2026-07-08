@@ -361,12 +361,12 @@ export function App() {
         <>
           <SavedWordsView saved={saved} selectLemma={setSelectedLemma}/>
           {selectedLemma && (
-            <>
+            <div className="word-popup-container" role="dialog" aria-modal="true" aria-label="Saved word definition">
               <button className="definition-backdrop" aria-label="Close definition" onClick={() => setSelectedLemma(null)} />
-              <div className="saved-definition-drawer" role="dialog" aria-modal="true" aria-label="Saved word definition">
+              <div className="word-popup-card">
                 <WordPanel lemma={selectedLemma} onClose={() => setSelectedLemma(null)} isSaved={isSaved} toggleSaved={toggleSaved}/>
               </div>
-            </>
+            </div>
           )}
         </>
       ) : screen === 'review' ? (
