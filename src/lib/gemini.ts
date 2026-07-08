@@ -27,14 +27,16 @@ export interface GeneratedStoryResponse {
 }
 
 export async function generateStory(level: Level, topic: string): Promise<GeneratedStoryResponse> {
-  const prompt = `You are a professional Korean language teacher. Generate a short Korean graded reading story for a student at the CEFR ${level} level. The story topic is "${topic}".
+  const prompt = `You are a professional Korean language teacher. Generate a decently long, full Korean graded reading story (not a short demo snippet) for a student at the CEFR ${level} level. The story topic is "${topic}".
+
+It must contain at least 3 detailed paragraphs, with around 150-300 words total. It should read like a real story or article.
 
 Return a JSON object matching this structure EXACTLY:
 {
   "title": "A beautiful Korean title for the story",
   "subtitle": "A one-sentence subtitle in Korean summarizing the story",
   "minutes": 4,
-  "wordCount": 180,
+  "wordCount": 240,
   "category": "Daily Life",
   "paragraphs": [
     {
@@ -65,11 +67,12 @@ Constraints:
    - B1: Intermediate structures, basic complex sentences, compound tenses, descriptive clauses.
    - B2: Upper intermediate, diverse expressions, idioms, and natural flows.
    - C1/C2: Rich, advanced expressions, deep topics, philosophical or literary language.
-2. In 'paragraphs', segment the Korean text. Split into parts. Words that are open-class (nouns, verbs, adjectives, adverbs) and are useful vocabulary words for the learner should have type "vocab" and reference their dictionary "lemma" (e.g., v('시작했습니다', '시작하다')). All other text (particles, spaces, punctuation, grammar conjugations that are not the root verb) must be type "text".
-3. Every vocab lemma in "segments" MUST either be one of Sori's core words (골목, 빵집, 자전거, 시작하다, 천천히, 따뜻하다, 빗소리, 강변, 노을, 반죽, 여유, 기록하다, 스며들다, 낯설다, 되새기다, 고요히) OR be defined in the "newVocab" array.
-4. Ensure all "newVocab" entries have open-class parts of speech ('noun', 'verb', 'adjective', 'adverb') only.
-5. Provide pronunciation in brackets, standard English meaning, and an example sentence in Korean utilizing that vocab word.
-6. The response MUST be valid JSON. Do not include any markdown formatting wrappers (like \`\`\`json) in your raw response, only the raw JSON.`;
+2. The story MUST contain at least 3 paragraphs to provide a full, immersive reading experience.
+3. In 'paragraphs', segment the Korean text. Split into parts. Words that are open-class (nouns, verbs, adjectives, adverbs) and are useful vocabulary words for the learner should have type "vocab" and reference their dictionary "lemma" (e.g., v('시작했습니다', '시작하다')). All other text (particles, spaces, punctuation, grammar conjugations that are not the root verb) must be type "text".
+4. Every vocab lemma in "segments" MUST either be one of Sori's core words (골목, 빵집, 자전거, 시작하다, 천천히, 따뜻하다, 빗소리, 강변, 노을, 반죽, 여유, 기록하다, 스며들다, 낯설다, 되새기다, 고요히) OR be defined in the "newVocab" array.
+5. Ensure all "newVocab" entries have open-class parts of speech ('noun', 'verb', 'adjective', 'adverb') only.
+6. Provide pronunciation in brackets, standard English meaning, and an example sentence in Korean utilizing that vocab word.
+7. The response MUST be valid JSON. Do not include any markdown formatting wrappers (like \`\`\`json) in your raw response, only the raw JSON.`;
 
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {

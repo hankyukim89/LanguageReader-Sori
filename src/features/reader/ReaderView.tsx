@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock3, Headphones, Languages, Pause, Play, Sparkles, Volume2 } from 'lucide-react';
+import { Clock3, Headphones, Languages, Pause, Play, Sparkles, Volume2, Lock } from 'lucide-react';
 import { LEVELS, type Article } from '../../domain/content';
 import { speakKorean, stopSpeaking } from '../../lib/speech';
 import { WordPanel } from '../vocabulary/WordPanel';
@@ -13,6 +13,8 @@ interface Props {
   onWordLookup?: (lemma: string) => void;
   onListenTimeIncrement?: (seconds: number) => void;
   onCompleteArticle?: (articleId: string) => void;
+  isPremium?: boolean;
+  onUpgradeRequired?: () => void;
 }
 
 export function ReaderView({ 
@@ -23,7 +25,9 @@ export function ReaderView({
   toggleSaved,
   onWordLookup,
   onListenTimeIncrement,
-  onCompleteArticle
+  onCompleteArticle,
+  isPremium = false,
+  onUpgradeRequired
 }: Props) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(18);
@@ -70,7 +74,20 @@ export function ReaderView({
   return <div className={`reader-layout ${selectedLemma ? 'word-open' : ''}`}><main className="reader">
     <img className="reader-hero" src={article.image} alt=""/>
     <div className="article-meta"><span style={{background:LEVELS[article.level]}}>{article.level}</span><span><Clock3/> {article.minutes} min</span><span><Headphones/> Listen</span><span className="word-count">{article.wordCount} words</span></div>
-    <h1>{article.title}</h1><p className="deck">{article.subtitle}</p><AudioPlayer playing={playing} progress={progress} toggle={togglePlayback}/>
+    <h1>{article.title}</h1><p className="deck">{article.subtitle}</p>
+    
+    <div className="voice-tier-header">
+      {isPremium ? (
+        <span className="voice-status-badge premium"><Sparkles size={11} fill="currentColor" /> Studio quality audio active</span>
+      ) : (
+        <div className="voice-status-badge free" onClick={onUpgradeRequired} style={{ cursor: 'pointer' }}>
+          <span>Browser Text-to-Speech active.</span>
+          <strong>Upgrade for ultra-realistic Studio Voice <Lock size={10} fill="currentColor" /></strong>
+        </div>
+      )}
+    </div>
+    
+    <AudioPlayer playing={playing} progress={progress} toggle={togglePlayback}/>
     <button className={`translation-toggle ${showTranslation ? 'active' : ''}`} onClick={() => setShowTranslation(current => !current)} aria-pressed={showTranslation}><Languages/>{showTranslation ? 'Hide English' : 'Show English translation'}</button>
     <div className="article-body">{article.paragraphs.map((paragraph,index) => <div className="article-paragraph" key={index}><p>{paragraph.segments.map((segment,segmentIndex) => segment.type === 'text' ? segment.value : <button key={segmentIndex} className="vocab-word" style={{'--word-color':LEVELS[article.level]} as React.CSSProperties} onClick={() => handleSelectLemma(segment.lemma)}>{segment.value}</button>)}</p>{showTranslation ? <p className="english-translation" lang="en">{paragraph.english}</p> : null}</div>)}</div>
     

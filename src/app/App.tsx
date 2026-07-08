@@ -7,6 +7,7 @@ import { ReaderView } from '../features/reader/ReaderView';
 import { ReviewView, SavedWordsView } from '../features/vocabulary/VocabularyViews';
 import { ProfileView } from '../features/profile/ProfileView';
 import { StoryGenerator } from '../features/library/StoryGenerator';
+import { CheckoutModal } from '../features/library/CheckoutModal';
 import { authService, dbService, type AuthUser, type UserStats } from '../lib/firebase';
 import { saveDynamicVocabulary } from '../content/vocabulary';
 import { ARTICLES } from '../content/articles';
@@ -29,6 +30,7 @@ export function App() {
   
   const [selectedLemma, setSelectedLemma] = useState<string | null>(null);
   const [showGenerator, setShowGenerator] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
 
   // Monitor auth state changes
   useEffect(() => {
@@ -94,8 +96,20 @@ export function App() {
   const savedSet = useMemo(() => new Set(saved), [saved]);
   const isSaved = useCallback((lemma: string) => savedSet.has(lemma), [savedSet]);
   
+  const isPremium = !!stats?.isPremium;
+
   const toggleSaved = useCallback((lemma: string) => {
-    if (!user) return;
+    if (!user || !stats) return;
+    
+    const isCurrentlySaved = saved.includes(lemma);
+    if (!isCurrentlySaved) {
+      // Paywall save vocab limit at 5 words
+      if (!stats.isPremium && saved.length >= 5) {
+        setShowPremiumModal(true);
+        return;
+      }
+    }
+
     setSaved(current => {
       const next = current.includes(lemma) 
         ? current.filter(item => item !== lemma) 
@@ -104,13 +118,18 @@ export function App() {
       localStorage.setItem(`sori:saved-vocabulary:${user.uid}`, JSON.stringify(next));
       return next;
     });
-  }, [user]);
+  }, [user, stats, saved]);
 
   const navigate = useCallback((next: Screen) => { 
+    // Paywall block for Flashcard Review
+    if (next === 'review' && !stats?.isPremium) {
+      setShowPremiumModal(true);
+      return;
+    }
     setArticle(null); 
     setSelectedLemma(null); 
     setScreen(next); 
-  }, []);
+  }, [stats]);
 
   const openArticle = useCallback((next: Article) => { 
     setArticle(next); 
@@ -142,8 +161,6 @@ export function App() {
       if (!prev) return null;
       const nextSeconds = (prev.hoursListened || 0) + seconds;
       
-      // Batch sync to database to avoid heavy traffic (we can update Firestore on changes)
-      // Since mock handles it instantly, we write directly. In a scaled app, debounce is preferred.
       dbService.updateUserStats(user.uid, { hoursListened: nextSeconds }).catch(e => {
         console.error("Failed to sync listening time:", e);
       });
@@ -157,23 +174,42 @@ export function App() {
 
   // Handle story generation completion
   const handleStoryGenerated = useCallback((newArticle: Article, newVocabList: any[]) => {
-    if (!user) return;
+    if (!user || !stats) return;
 
     // Save vocabulary terms to local cache so reader resolves definitions
     saveDynamicVocabulary(newVocabList);
 
     // Save custom article to state and storage
     setCustomArticles(current => {
-      // Embed vocab list into article object for retrieval on reloads
       const articleWithVocab = { ...newArticle, newVocab: newVocabList };
       const next = [articleWithVocab, ...current];
       localStorage.setItem(`sori:custom-articles:${user.uid}`, JSON.stringify(next));
       return next;
     });
 
-    // Auto-open reader for the generated story!
+    // Increment AI generated count
+    const nextCount = (stats.aiStoryCount || 0) + 1;
+    setStats(prev => prev ? { ...prev, aiStoryCount: nextCount } : null);
+    dbService.updateUserStats(user.uid, { aiStoryCount: nextCount }).catch(e => {
+      console.error("Failed to update AI story count:", e);
+    });
+
+    // Auto-open reader for the generated story
     openArticle(newArticle);
-  }, [user, openArticle]);
+  }, [user, stats, openArticle]);
+
+  const handleOpenGenerator = () => {
+    // Paywall block for AI story builder (1 free preview story limit)
+    if (!isPremium && (stats?.aiStoryCount || 0) >= 1) {
+      setShowPremiumModal(true);
+    } else {
+      setShowGenerator(true);
+    }
+  };
+
+  const handlePaymentSuccess = () => {
+    setStats(prev => prev ? { ...prev, isPremium: true } : null);
+  };
 
   if (authLoading) {
     return (
@@ -218,12 +254,22 @@ export function App() {
           toggleSaved={toggleSaved}
           onWordLookup={handleWordLookup}
           onListenTimeIncrement={handleListenTimeIncrement}
+          isPremium={isPremium}
+          onUpgradeRequired={() => setShowPremiumModal(true)}
         />
       ) : screen === 'home' ? (
         <div className="home-wrapper">
-          <HomeView level={level} setLevel={setLevel} openArticle={openArticle}/>
+          <HomeView 
+            level={level} 
+            setLevel={setLevel} 
+            openArticle={openArticle}
+            isPremium={isPremium}
+            onUpgradeRequired={() => setShowPremiumModal(true)}
+            userDisplayName={userDisplayName}
+            articles={allArticles}
+          />
           <div className="ai-story-banner-container">
-            <div className="ai-story-banner" onClick={() => setShowGenerator(true)}>
+            <div className="ai-story-banner" onClick={handleOpenGenerator}>
               <Sparkles className="icon-coral animate-pulse" />
               <div>
                 <h3>Create an AI Graded Story</h3>
@@ -236,12 +282,19 @@ export function App() {
       ) : screen === 'library' ? (
         <div className="library-wrapper">
           <div className="library-header-actions">
-            <button className="primary ai-gen-btn" onClick={() => setShowGenerator(true)}>
+            <button className="primary ai-gen-btn" onClick={handleOpenGenerator}>
               <Sparkles size={16} />
               <span>AI Story Builder</span>
             </button>
           </div>
-          <LibraryView level={level} setLevel={setLevel} openArticle={openArticle}/>
+          <LibraryView 
+            level={level} 
+            setLevel={setLevel} 
+            openArticle={openArticle}
+            isPremium={isPremium}
+            onUpgradeRequired={() => setShowPremiumModal(true)}
+            articles={allArticles}
+          />
         </div>
       ) : screen === 'saved' ? (
         <SavedWordsView saved={saved} toggleSaved={toggleSaved} selectLemma={setSelectedLemma}/>
@@ -252,6 +305,7 @@ export function App() {
           uid={user.uid} 
           savedCount={saved.length} 
           onSignOut={() => setUser(null)} 
+          onUpgradeClick={() => setShowPremiumModal(true)}
         />
       )}
     </section>
@@ -262,6 +316,14 @@ export function App() {
       <StoryGenerator 
         onClose={() => setShowGenerator(false)} 
         onStoryGenerated={handleStoryGenerated} 
+      />
+    )}
+
+    {showPremiumModal && (
+      <CheckoutModal 
+        uid={user.uid}
+        onClose={() => setShowPremiumModal(false)}
+        onPaymentSuccess={handlePaymentSuccess}
       />
     )}
   </div>;

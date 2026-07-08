@@ -25,6 +25,8 @@ export interface UserStats {
   lastActiveDate: string;
   wordsTranslated: string[]; // List of unique lemmas clicked
   hoursListened: number;     // Listened time in seconds
+  isPremium: boolean;
+  aiStoryCount: number;      // Tracks count of generated stories
 }
 
 export interface AuthUser {
@@ -68,7 +70,9 @@ const createDefaultStats = (uid: string, email: string): UserStats => ({
   streak: 12, // Default streak to match UI concept initially
   lastActiveDate: new Date().toISOString().split('T')[0],
   wordsTranslated: ['골목', '여유', '빗소리'],
-  hoursListened: 1080 // 18 minutes in seconds
+  hoursListened: 1080, // 18 minutes in seconds
+  isPremium: false,
+  aiStoryCount: 0
 });
 
 // Mock Local Storage State
@@ -77,7 +81,12 @@ const setMockUsers = (users: any) => localStorage.setItem('sori:mock-users', JSO
 
 const getMockStats = (uid: string): UserStats | null => {
   const stats = localStorage.getItem(`sori:mock-stats:${uid}`);
-  return stats ? JSON.parse(stats) : null;
+  if (!stats) return null;
+  const parsed = JSON.parse(stats) as UserStats;
+  // Migration support for existing storage entries
+  if (parsed.isPremium === undefined) parsed.isPremium = false;
+  if (parsed.aiStoryCount === undefined) parsed.aiStoryCount = 0;
+  return parsed;
 };
 const setMockStats = (uid: string, stats: UserStats) => {
   localStorage.setItem(`sori:mock-stats:${uid}`, JSON.stringify(stats));
@@ -204,7 +213,17 @@ export const dbService = {
       const statsRef = doc(db, 'users', uid);
       const snap = await getDoc(statsRef);
       if (snap.exists()) {
-        return snap.data() as UserStats;
+        const data = snap.data() as UserStats;
+        if (data.isPremium === undefined || data.aiStoryCount === undefined) {
+          const migrated = {
+            ...data,
+            isPremium: data.isPremium !== undefined ? data.isPremium : false,
+            aiStoryCount: data.aiStoryCount !== undefined ? data.aiStoryCount : 0
+          };
+          await setDoc(statsRef, migrated, { merge: true });
+          return migrated;
+        }
+        return data;
       } else {
         // Create if it doesn't exist
         const defaultStats = createDefaultStats(uid, 'user@sori.app');

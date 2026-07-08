@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Bookmark, Flame, Headphones, Languages, LogOut, Mail, Calendar, User, Check, Edit2 } from 'lucide-react';
+import { Bookmark, Flame, Headphones, Languages, LogOut, Mail, Calendar, User, Check, Edit2, Sparkles } from 'lucide-react';
 import { authService, dbService, type UserStats } from '../../lib/firebase';
 
 interface ProfileViewProps {
   uid: string;
   savedCount: number;
   onSignOut: () => void;
+  onUpgradeClick?: () => void;
 }
 
-export function ProfileView({ uid, savedCount, onSignOut }: ProfileViewProps) {
+export function ProfileView({ uid, savedCount, onSignOut, onUpgradeClick }: ProfileViewProps) {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingName, setEditingName] = useState(false);
@@ -130,6 +131,21 @@ export function ProfileView({ uid, savedCount, onSignOut }: ProfileViewProps) {
             </div>
           )}
           <span className="user-email">{stats.email}</span>
+          
+          <div className="profile-sub-tier-row">
+            <div className={`subscription-badge ${stats.isPremium ? 'premium' : 'free'}`}>
+              {stats.isPremium ? (
+                <><Sparkles size={11} fill="currentColor" /> Sori Pro</>
+              ) : (
+                'Sori Free'
+              )}
+            </div>
+            {!stats.isPremium && onUpgradeClick && (
+              <button className="upgrade-inline-btn" onClick={onUpgradeClick}>
+                Upgrade to Pro
+              </button>
+            )}
+          </div>
         </div>
       </section>
 
@@ -211,6 +227,28 @@ export function ProfileView({ uid, savedCount, onSignOut }: ProfileViewProps) {
             <div className="detail-item">
               <User size={16} />
               <span>Authentication: <strong>{authService.isReal ? 'Firebase Auth' : 'Sandbox Account'}</strong></span>
+            </div>
+          </div>
+        </div>
+
+        {/* Coming Soon Roadmap */}
+        <div className="settings-block roadmap-block">
+          <h3>Sori Product Roadmap (Coming Soon)</h3>
+          <div className="roadmap-grid">
+            <div className="roadmap-item">
+              <span className="roadmap-tag">LEARNING</span>
+              <h4>Interactive Reading Quizzes</h4>
+              <p>Test your comprehension after completing stories with AI-generated multiple choice question prompts tailored to your exact vocabulary level.</p>
+            </div>
+            <div className="roadmap-item">
+              <span className="roadmap-tag">PRACTICE</span>
+              <h4>Vocabulary Matching Games</h4>
+              <p>Reinforce your saved open-class vocabulary lists with fast-paced speed-matching study sessions to boost automatic memory retention.</p>
+            </div>
+            <div className="roadmap-item">
+              <span className="roadmap-tag">MARKET</span>
+              <h4>Original Korean Literature Hub</h4>
+              <p>Purchase translated stories and original web novels uploaded directly by Korean authors, supporting the creator community while you study.</p>
             </div>
           </div>
         </div>
