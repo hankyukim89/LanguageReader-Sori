@@ -116,6 +116,14 @@ export function LibraryView({ level, setLevel, openArticle, isPremium, onUpgrade
     }
   };
 
+  // Group visible articles by category
+  const categoriesMap = visible.reduce((acc, article) => {
+    const cat = article.category || 'Other';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(article);
+    return acc;
+  }, {} as Record<string, Article[]>);
+
   return <div className="page library-page">
     <header className="page-heading">
       <div>
@@ -129,16 +137,25 @@ export function LibraryView({ level, setLevel, openArticle, isPremium, onUpgrade
     
     <LevelPicker value={level} onChange={setLevel}/>
     
-    <div className="library-list">
-      {visible.map(article => (
-        <StoryCard 
-          key={article.id} 
-          article={article} 
-          onOpen={handleOpen}
-          isLocked={!isPremium && isPremiumArticle(article.id, article.level)}
-          isSaved={savedStoryIds.has(article.id)}
-          onToggleSaved={() => toggleSavedStory?.(article.id)}
-        />
+    <div className="library-categories" style={{ display: 'grid', gap: '38px', marginTop: '24px' }}>
+      {Object.entries(categoriesMap).map(([categoryName, catArticles]) => (
+        <div key={categoryName} className="category-section">
+          <h2 className="category-title" style={{ fontFamily: 'Georgia, serif', fontSize: '22px', margin: '0 0 16px', borderBottom: '1px solid var(--line)', paddingBottom: '8px' }}>
+            {categoryName}
+          </h2>
+          <div className="library-list">
+            {catArticles.map(article => (
+              <StoryCard 
+                key={article.id} 
+                article={article} 
+                onOpen={handleOpen}
+                isLocked={!isPremium && isPremiumArticle(article.id, article.level)}
+                isSaved={savedStoryIds.has(article.id)}
+                onToggleSaved={() => toggleSavedStory?.(article.id)}
+              />
+            ))}
+          </div>
+        </div>
       ))}
       {!visible.length && <div className="empty-state compact"><h2>No matching stories</h2><p>Try another title, topic, or level.</p></div>}
     </div>

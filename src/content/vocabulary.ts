@@ -381,10 +381,19 @@ export const VOCABULARY = {
 
 export type VocabularyLemma = keyof typeof VOCABULARY;
 
+let dynamicVocabCache: Record<string, VocabularyEntry> = {};
+
+export function setDynamicVocabCache(vocab: Record<string, VocabularyEntry>): void {
+  dynamicVocabCache = vocab;
+}
+
 export function getVocabulary(lemma: string): VocabularyEntry | undefined {
   // Check static database first
   const staticEntry = VOCABULARY[lemma as VocabularyLemma];
   if (staticEntry) return staticEntry;
+
+  // Check memory cache loaded from database
+  if (dynamicVocabCache[lemma]) return dynamicVocabCache[lemma];
 
   // Fallback to dynamic vocabulary saved in localStorage
   try {

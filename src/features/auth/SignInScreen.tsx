@@ -16,11 +16,18 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!email || !password) {
+    let cleanEmail = email.trim();
+    let cleanPassword = password.trim();
+
+    // If both inputs are empty, automatically log in as admin
+    if (!cleanEmail && !cleanPassword) {
+      cleanEmail = 'a';
+      cleanPassword = 'a';
+    } else if (!cleanEmail || !cleanPassword) {
       setError('Please fill in all fields.');
       return;
     }
-    if (password.length < 6 && !(email === 'a' && password === 'a')) {
+    if (authService.isReal && cleanPassword.length < 6 && !(cleanEmail === 'a' && cleanPassword === 'a')) {
       setError('Password must be at least 6 characters.');
       return;
     }
@@ -31,9 +38,9 @@ export function SignInScreen({ onAuthSuccess }: SignInScreenProps) {
 
     try {
       if (isSignUp) {
-        await authService.signUp(email, password);
+        await authService.signUp(cleanEmail, cleanPassword);
       } else {
-        await authService.signIn(email, password);
+        await authService.signIn(cleanEmail, cleanPassword);
       }
       onAuthSuccess();
     } catch (err: any) {

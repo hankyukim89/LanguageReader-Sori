@@ -9,12 +9,15 @@ import { WordPanel } from '../features/vocabulary/WordPanel';
 import { ProfileView } from '../features/profile/ProfileView';
 import { StoryGenerator } from '../features/library/StoryGenerator';
 import { CheckoutModal } from '../features/library/CheckoutModal';
+import { SettingsModal } from '../components/SettingsModal';
+import { AdminConsole } from '../features/library/AdminConsole';
 import { authService, dbService, type AuthUser, type UserStats } from '../lib/firebase';
-import { saveDynamicVocabulary } from '../content/vocabulary';
+import { saveDynamicVocabulary, setDynamicVocabCache } from '../content/vocabulary';
 import { ARTICLES } from '../content/articles';
 import type { Article } from '../domain/content';
 
 export function App() {
+  const isAdmin = true;
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -32,8 +35,28 @@ export function App() {
   const [selectedLemma, setSelectedLemma] = useState<string | null>(null);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [savedStories, setSavedStories] = useState<string[]>([]);
   const [searchRequest, setSearchRequest] = useState(0);
+
+  // Admin published articles
+  const [publishedArticles, setPublishedArticles] = useState<Article[]>([]);
+
+  const loadPublishedArticles = useCallback(async () => {
+    try {
+      const fetchedArticles = await dbService.getPublishedArticles();
+      setPublishedArticles(fetchedArticles);
+
+      const fetchedVocab = await dbService.getPublishedVocabulary();
+      setDynamicVocabCache(fetchedVocab);
+    } catch (e) {
+      console.error("Error loading published articles from database:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPublishedArticles();
+  }, [loadPublishedArticles]);
 
   // Monitor auth state changes
   useEffect(() => {
@@ -94,15 +117,21 @@ export function App() {
     loadUserData();
   }, [user]);
 
-  // Combine default static articles and custom generated articles
+  // Combine default static articles, admin published articles, and custom generated articles
   const allArticles = useMemo(() => {
-    return [...ARTICLES, ...customArticles];
-  }, [customArticles]);
+    const combined = [...publishedArticles, ...customArticles, ...ARTICLES];
+    const seen = new Set();
+    return combined.filter(art => {
+      if (seen.has(art.id)) return false;
+      seen.add(art.id);
+      return true;
+    });
+  }, [publishedArticles, customArticles]);
 
   const savedSet = useMemo(() => new Set(saved), [saved]);
   const isSaved = useCallback((lemma: string) => savedSet.has(lemma), [savedSet]);
   
-  const isPremium = !!stats?.isPremium;
+  const isPremium = isAdmin || !!stats?.isPremium;
 
   useEffect(() => {
     if (screen !== 'saved' || !selectedLemma) return;
@@ -129,7 +158,7 @@ export function App() {
     const isCurrentlySaved = saved.includes(lemma);
     if (!isCurrentlySaved) {
       // Paywall save vocab limit at 5 words
-      if (!stats.isPremium && saved.length >= 5) {
+      if (!isPremium && saved.length >= 5) {
         setShowPremiumModal(true);
         return;
       }
@@ -147,7 +176,7 @@ export function App() {
 
   const navigate = useCallback((next: Screen) => { 
     // Paywall block for Flashcard Review
-    if (next === 'review' && !stats?.isPremium) {
+    if (next === 'review' && !isPremium) {
       setShowPremiumModal(true);
       return;
     }
@@ -285,6 +314,8 @@ export function App() {
       navigate={navigate} 
       userDisplayName={userDisplayName} 
       userStreak={userStreak} 
+      isAdmin={isAdmin}
+      onOpenSettings={() => setShowSettingsModal(true)}
     />
     
     <header className="mobile-header">
@@ -371,6 +402,11 @@ export function App() {
         </>
       ) : screen === 'review' ? (
         <ReviewView saved={saved}/>
+      ) : screen === 'admin' ? (
+        <AdminConsole 
+          onStoryPublished={loadPublishedArticles} 
+          onNavigateToHome={() => navigate('home')} 
+        />
       ) : (
         <ProfileView 
           key={`profile-${isPremium ? 'pro' : 'free'}`}
@@ -382,7 +418,7 @@ export function App() {
       )}
     </section>
 
-    {!article ? <BottomNavigation screen={screen} navigate={navigate}/> : null}
+    {!article ? <BottomNavigation screen={screen} navigate={navigate} isAdmin={isAdmin}/> : null}
 
     {showGenerator && (
       <StoryGenerator 
@@ -396,6 +432,21 @@ export function App() {
         uid={user.uid}
         onClose={() => setShowPremiumModal(false)}
         onPaymentSuccess={handlePaymentSuccess}
+      />
+    )}
+
+    {showSettingsModal && (
+      <SettingsModal 
+        onClose={() => setShowSettingsModal(false)}
+        isAdmin={isAdmin}
+        primaryLanguage={stats?.primaryLanguage || 'English'}
+        onLanguageChange={(lang) => {
+          if (stats && user) {
+            const updated = { ...stats, primaryLanguage: lang };
+            setStats(updated);
+            dbService.updateUserStats(user.uid, { primaryLanguage: lang }).catch(console.error);
+          }
+        }}
       />
     )}
   </div>;

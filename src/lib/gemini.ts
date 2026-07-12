@@ -1,7 +1,6 @@
 import type { Article, Level } from '../domain/content';
-import { VOCABULARY } from '../content/vocabulary';
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "AIzaSyAOb0gbxpzIQ8nqsFcnXxK0oqPiN3ROkRs";
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 export interface GeneratedStoryResponse {
   title: string;
@@ -26,8 +25,7 @@ export interface GeneratedStoryResponse {
   }>;
 }
 
-export async function generateStory(level: Level, topic: string): Promise<GeneratedStoryResponse> {
-  const prompt = `You are a professional Korean language teacher. Generate a decently long, full Korean graded reading story (not a short demo snippet) for a student at the CEFR ${level} level. The story topic is "${topic}".
+const DEFAULT_STORY_PREPROMPT = `You are a professional Korean language teacher. Generate a decently long, full Korean graded reading story (not a short demo snippet) for a student at the CEFR [level] level. The story topic is "[topic]".
 
 It must contain at least 3 detailed paragraphs, with around 150-300 words total. It should read like a real story or article.
 
@@ -53,7 +51,7 @@ Return a JSON object matching this structure EXACTLY:
       "lemma": "커피",
       "pronunciation": "[커피]",
       "meaning": "coffee",
-      "level": "${level}",
+      "level": "[level]",
       "partOfSpeech": "noun",
       "example": "저는 아침마다 따뜻한 커피를 마셔요."
     }
@@ -61,7 +59,7 @@ Return a JSON object matching this structure EXACTLY:
 }
 
 Constraints:
-1. The story should be written precisely for the CEFR ${level} level:
+1. The story should be written precisely for the CEFR [level] level:
    - A1: Very simple present tense, basic particles, short sentences (e.g. -습니다/비읍니다 or -아요/어요).
    - A2: Elementary structures, basic past tense, simple conjunctions, everyday topics.
    - B1: Intermediate structures, basic complex sentences, compound tenses, descriptive clauses.
@@ -74,8 +72,26 @@ Constraints:
 6. Provide pronunciation in brackets, standard English meaning, and an example sentence in Korean utilizing that vocab word.
 7. The response MUST be valid JSON. Do not include any markdown formatting wrappers (like \`\`\`json) in your raw response, only the raw JSON.`;
 
+const DEFAULT_PICTURE_PREPROMPT = `Create a highly descriptive, artistic English prompt for generating a warm illustration to accompany a Korean graded reader story about: "[topic]" (Level: [level]).
+Specify a cozy illustration style, soft digital art or watercolor textures, and detail the key scene, characters, and color tones.
+Output ONLY the final image generation prompt text, with no quotes, intro, or wrapping. Keep it under 60 words.`;
+
+export function getStoryPreprompt(): string {
+  return localStorage.getItem('sori:settings:preprompt:story') || DEFAULT_STORY_PREPROMPT;
+}
+
+export function getPicturePreprompt(): string {
+  return localStorage.getItem('sori:settings:preprompt:picture') || DEFAULT_PICTURE_PREPROMPT;
+}
+
+export async function generateStory(level: Level, topic: string): Promise<GeneratedStoryResponse> {
+  const basePreprompt = getStoryPreprompt();
+  const prompt = basePreprompt
+    .replace(/\[level\]/g, level)
+    .replace(/\[topic\]/g, topic);
+
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -101,11 +117,9 @@ Constraints:
       throw new Error("Empty response received from Gemini API");
     }
 
-    // Clean any potential markdown wrapping backticks
     const cleanedJson = rawText.replace(/^\s*```json\s*/i, '').replace(/\s*```\s*$/i, '').trim();
     const result = JSON.parse(cleanedJson) as GeneratedStoryResponse;
 
-    // Post-process response to ensure parts of speech are valid and standard fields exist
     result.newVocab = (result.newVocab || []).map(v => ({
       ...v,
       level: v.level || level,
@@ -118,8 +132,39 @@ Constraints:
 
   } catch (error) {
     console.error("Gemini Generation failed, returning fallback story.", error);
-    // Graceful fallback for offline or failed API cases
     return getFallbackStory(level, topic);
+  }
+}
+
+export async function generatePicturePrompt(level: Level, topic: string): Promise<string> {
+  const basePreprompt = getPicturePreprompt();
+  const prompt = basePreprompt
+    .replace(/\[level\]/g, level)
+    .replace(/\[topic\]/g, topic);
+
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gemini API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    return rawText ? rawText.trim() : `cozy digital illustration about ${topic}`;
+  } catch (error) {
+    console.error("Failed to generate picture prompt:", error);
+    return `cozy digital illustration about ${topic}`;
   }
 }
 

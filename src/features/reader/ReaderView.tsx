@@ -68,7 +68,27 @@ export function ReaderView({
     }
   };
 
-  const handleSelectLemma = (lemma: string) => {
+  const [popupPosition, setPopupPosition] = useState<{ top: number; left: number; positionAtTop: boolean } | null>(null);
+
+  const handleSelectLemma = (lemma: string, event: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    
+    // Check if there is enough space below (popup height ~340px)
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const positionAtTop = spaceBelow < 340 && rect.top > 340;
+
+    const top = positionAtTop 
+      ? rect.top - 8 
+      : rect.bottom + 8;
+      
+    let left = rect.left + (rect.width / 2);
+    const cardWidth = 320;
+    const padding = 12;
+    const minLeft = cardWidth / 2 + padding;
+    const maxLeft = window.innerWidth - (cardWidth / 2) - padding;
+    left = Math.max(minLeft, Math.min(maxLeft, left));
+
+    setPopupPosition({ top, left, positionAtTop });
     selectLemma(lemma);
     if (onWordLookup) {
       onWordLookup(lemma);
@@ -112,7 +132,7 @@ export function ReaderView({
       
       <AudioPlayer playing={playing} progress={progress} durationSeconds={durationSeconds} toggle={togglePlayback}/>
       <button className={`translation-toggle ${showTranslation ? 'active' : ''}`} onClick={() => setShowTranslation(current => !current)} aria-pressed={showTranslation}><Languages/>{showTranslation ? 'Hide English' : 'Show English translation'}</button>
-      <div className="article-body">{article.paragraphs.map((paragraph,index) => <div className="article-paragraph" key={index}><p>{paragraph.segments.map((segment,segmentIndex) => segment.type === 'text' ? segment.value : <button key={segmentIndex} className="vocab-word" style={{'--word-color':LEVELS[article.level]} as React.CSSProperties} onClick={() => handleSelectLemma(segment.lemma)}>{segment.value}</button>)}</p>{showTranslation ? <p className="english-translation" lang="en">{paragraph.english}</p> : null}</div>)}</div>
+      <div className="article-body">{article.paragraphs.map((paragraph,index) => <div className="article-paragraph" key={index}><p>{paragraph.segments.map((segment,segmentIndex) => segment.type === 'text' ? segment.value : <button key={segmentIndex} className="vocab-word" style={{'--word-color':LEVELS[article.level]} as React.CSSProperties} onClick={(e) => handleSelectLemma(segment.lemma, e)}>{segment.value}</button>)}</p>{showTranslation ? <p className="english-translation" lang="en">{paragraph.english}</p> : null}</div>)}</div>
       
       <div className="reader-finish">
         <Sparkles/>
@@ -133,13 +153,22 @@ export function ReaderView({
       </div>
     </main>
     
-    {selectedLemma && (
-      <div className="word-popup-container" role="dialog" aria-modal="true" aria-label="Word definition">
-        <button className="definition-backdrop" aria-label="Close definition" onClick={() => selectLemma(null)} />
-        <div className="word-popup-card">
+    {selectedLemma && popupPosition && (
+      <>
+        <button className="definition-backdrop-transparent" aria-label="Close definition" onClick={() => selectLemma(null)} />
+        <div 
+          className={`word-popup-card-mini ${popupPosition.positionAtTop ? 'pos-top' : 'pos-bottom'}`}
+          style={{
+            position: 'fixed',
+            top: `${popupPosition.top}px`,
+            left: `${popupPosition.left}px`,
+            transform: popupPosition.positionAtTop ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
+            zIndex: 100,
+          }}
+        >
           <WordPanel lemma={selectedLemma} onClose={() => selectLemma(null)} isSaved={isSaved} toggleSaved={toggleSaved}/>
         </div>
-      </div>
+      </>
     )}
   </div>;
 }
